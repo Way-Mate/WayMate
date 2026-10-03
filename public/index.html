@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Waymate — Date on your route</title>
+  <link rel="icon" href="assets/favicon.svg" />
+  <link rel="stylesheet" href="css/styles.css" />
+  <link rel="stylesheet" href="css/desktop.css" />
+  <link rel="stylesheet" href="css/landing.css" />
+</head>
+<body>
+<div class="app">
+  <header class="appbar">
+    <div class="brand">
+      <div class="logo">🚇</div>
+      <div><div class="brand-name">Waymate</div><div class="brand-sub">Date on your route • Delhi Metro</div></div>
+    </div>
+  </header>
+
+  <main id="content"><section id="screen" class="screen"></section></main>
+
+  <nav class="tabbar hidden" id="tabbar">
+    <button data-tab="discover" data-do="go" data-screen="discover"><span>💞</span>Discover</button>
+    <button data-tab="buddies" data-do="go" data-screen="buddies"><span>🫂</span>Buddies</button>
+    <button data-tab="profile" data-do="go" data-screen="profile"><span>👤</span>Profile</button>
+  </nav>
+  <div class="toast hidden" id="toast"></div>
+</div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+venv/
+tests/
+supabase/
+__pycache__/
+.env
+.git/

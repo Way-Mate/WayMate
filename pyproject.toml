@@ -1,0 +1,9 @@
+# Used by Vercel (it reads the dependency list and finds the app here). For local use, requirements.txt is enough.
+[project]
+name = "waymate"
+version = "1.0.0"
+requires-python = ">=3.9"
+dependencies = ["fastapi>=0.110", "uvicorn>=0.29", "requests>=2.31", "python-dotenv>=1.0"]
+
+[tool.vercel]
+entrypoint = "backend:app"      # tells Vercel: the FastAPI object called `app` inside backend.py

@@ -1,0 +1,21 @@
+/* Landing page (shown to signed-out visitors). */
+.landing { grid-column: 1 / -1; }
+.hero { background: linear-gradient(120deg, var(--navy) 0%, var(--navy2) 100%); color: #fff; border-radius: 22px; padding: 28px 22px; margin-bottom: 18px; }
+.hero h1 { font-size: 26px; line-height: 1.15; margin-bottom: 10px; }
+.hero p { font-size: 15px; line-height: 1.55; color: rgba(255,255,255,.88); max-width: 560px; }
+.hero-cta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.hero-cta.center { justify-content: center; margin: 18px 0 8px; }
+.hero-cta .btn { width: auto; padding-left: 22px; padding-right: 22px; }
+.hero .btn.ghost { background: transparent; color: #fff; border-color: rgba(255,255,255,.55); }
+.steps { display: grid; grid-template-columns: 1fr; gap: 12px; margin-bottom: 18px; }
+.steps .card { margin: 0; }
+.steps p { margin-top: 4px; font-size: 14px; line-height: 1.5; }
+.step-n { width: 28px; height: 28px; border-radius: 50%; background: #fde8ee; color: var(--blue); font-weight: 800; display: grid; place-items: center; margin-bottom: 8px; }
+@media (min-width: 768px) {
+  .hero { padding: 48px 44px; } .hero h1 { font-size: 38px; } .hero p { font-size: 17px; }
+  .steps { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (min-width: 1100px) {
+  .hero { padding: 72px 64px; border-radius: 28px; } .hero h1 { font-size: 52px; max-width: 760px; } .hero p { font-size: 19px; max-width: 640px; }
+  .hero-cta .btn { padding: 16px 30px; font-size: 16px; }
+}
