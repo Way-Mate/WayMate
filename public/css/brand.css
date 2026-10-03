@@ -1,0 +1,11 @@
+/* Header logo (the Waymate wordmark image). Loaded after the other stylesheets. */
+.brand { gap: 14px; }
+.brand-logo { display: block; height: 34px; width: auto; }
+.brand-sub { margin-top: 0; padding-left: 14px; border-left: 1px solid rgba(255, 255, 255, .28); line-height: 1.3; }
+@media (min-width: 768px) {
+  .brand-logo { height: 42px; }
+  .brand-sub { font-size: 12px; }
+}
+@media (max-width: 380px) {                 /* very small phones: drop the tagline so the logo never gets squeezed */
+  .brand-sub { display: none; }
+}
