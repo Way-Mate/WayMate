@@ -128,6 +128,7 @@ function matchCard(m) {
 }
 
 async function renderRouteForm(post) {
+  await ensureStations();
   const t = post ? new Date(post.departure_at) : new Date(Date.now() + 15 * 60000);
   const hhmm = `${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`;
   show(`<div class="card"><h2 class="page-title">Where are you going?</h2>
@@ -147,11 +148,12 @@ function renderSetupProblem(kind, host = "") {
     key: "<b>Supabase rejected the keys.</b> In <code>.env</code> use the <b>Publishable key</b> (<code>sb_publishable_…</code>) for <code>SUPABASE_PUBLISHABLE_KEY</code> and the <b>Secret key</b> (<code>sb_secret_…</code>) for <code>SUPABASE_SECRET_KEY</code> — no extra spaces, no quotes — then restart the backend.",
     grants: "<b>The tables exist, but the server key has no permission on them.</b> Run the <code>grant …</code> lines at the bottom of <code>supabase/schema.sql</code> in the Supabase SQL Editor, then reload.",
     tables: "<b>Connected to Supabase, but the Waymate tables don't exist yet.</b> In the Supabase dashboard open <b>SQL Editor</b>, paste and run the whole of <code>supabase/schema.sql</code> (it also gives the server key permission), then reload this page.",
-    server_down: "<b>The Waymate server isn't answering.</b> Start it with <code>python backend.py</code> and reload.",
-    other: "<b>Supabase returned an unexpected error.</b> Check the terminal where backend.py is running."
+    server_down: "<b>We can't reach the Waymate server.</b> Please check your internet connection and try again in a moment. <span class=\"muted\">(Running it yourself? Start it with <code>python backend.py</code>.)</span>",
+    other: "<b>Something went wrong on our side.</b> Please try again in a moment. <span class=\"muted\">(Owner: check the Vercel logs, or open <code>/api/status</code>.)</span>"
   }[kind] || "Something is wrong with the setup.";
   $("#tabbar").classList.add("hidden");
-  show(`<div class="card"><h2 class="page-title">Almost there — connect Supabase</h2><p>${text}</p>
+  const title = ["server_down", "other"].includes(kind) ? "We can't load Waymate right now" : "Almost there — connect Supabase";
+  show(`<div class="card" data-nosnippet><h2 class="page-title">${title}</h2><p>${text}</p>
     <button class="btn primary block" data-do="reload">Try again</button></div>`);
 }
 
@@ -160,7 +162,7 @@ function startApp(profile) {
   me = profile;
   if (!me) { $("#tabbar").classList.add("hidden"); return renderProfileForm(); }
   $("#tabbar").classList.remove("hidden");
-  setInterval(checkRequests, 20000);         // announce new buddy requests
+  setInterval(checkRequests, 30000);         // announce new buddy requests
   go("discover");
 }
 async function checkRequests() {
@@ -173,6 +175,7 @@ async function checkRequests() {
 
 /* ----- discover: post your route → see matches ----- */
 async function renderDiscover() {
+  await ensureStations();
   const mine = await ok(api("/route"));
   if (!mine) return;
   if (!mine.route) return renderRouteForm();
@@ -223,7 +226,7 @@ async function renderChat() {
     if (!chatWith || document.hidden) return;
     const fresh = await api(`/messages/${chatWith.id}?after=${lastMessageId}`).catch(() => null);
     if (fresh) fresh.messages.forEach(addBubble);
-  }, 3000);
+  }, 5000);
 }
 function addBubble(msg) {
   const log = $("#chatLog");
@@ -317,12 +320,29 @@ const ACTIONS = {
 };
 
 /* ---------- 5. start-up ---------- */
+const isLocal = ["localhost", "127.0.0.1"].includes(location.hostname);
+async function loadStations() {
+  if (STATIONS.length) return;
+  STATIONS = (await api("/stations")).stations;      // cached by the Vercel edge, so this is nearly free
+}
+async function ensureStations() {
+  try { await loadStations(); } catch (e) { toast("Couldn't load the station list — please check your connection"); }
+}
+
 (async function boot() {
-  let status;
-  try { status = await api("/status"); } catch (e) { return renderSetupProblem("server_down"); }
-  if (!status.ok) return renderSetupProblem(status.problem, status.host);
-  STATIONS = (await api("/stations")).stations;
-  const who = await api("/me");
-  if (!who.signedIn) return renderLanding();
-  startApp(who.profile);
+  // A "wm_hint" cookie means this browser has signed in before. Without it we show the landing page INSTANTLY, without
+  // waiting for the server — so new visitors (and search engines) always see the real page straight away.
+  const returning = document.cookie.includes("wm_hint=1");
+  if (returning) show('<div class="card empty">Loading…</div>'); else renderLanding();
+  try {
+    const [who] = await Promise.allSettled([api("/me"), loadStations()]);      // both at once: one round trip, not three
+    if (who.status === "rejected") throw who.reason;
+    if (!who.value.signedIn) { document.cookie = "wm_hint=; Max-Age=0; path=/"; if (returning) renderLanding(); return; }
+    startApp(who.value.profile);
+  } catch (e) {
+    if (!returning && !isLocal) return;             // visitors keep the landing page; any problem shows up when they act
+    let status = null;
+    try { status = await api("/status"); } catch (e2) { return renderSetupProblem("server_down"); }
+    renderSetupProblem(status.ok ? "other" : status.problem, status.host);
+  }
 })();

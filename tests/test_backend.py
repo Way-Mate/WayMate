@@ -2,6 +2,7 @@
 from types import SimpleNamespace
 import os
 import sys
+import time
 import unittest
 from datetime import datetime, timedelta, timezone
 
@@ -118,6 +119,31 @@ class WaymateTests(unittest.TestCase):
         c = Browser()
         r = c.client.post("/api/auth/login", content="{not json", headers={"Content-Type": "application/json"})
         self.assertEqual((r.status_code, r.json()["error"]), (400, "Invalid request"))
+
+    def test_login_sets_a_signed_in_hint_cookie_and_logout_clears_it(self):
+        c = self.person("ann")
+        self.assertEqual(c.client.cookies.get("wm_hint"), "1")        # lets the page paint instantly next time (holds nothing secret)
+        c.post("/api/auth/logout")
+        self.assertIsNone(c.client.cookies.get("wm_hint"))
+
+    def test_station_list_can_be_cached_at_the_edge(self):
+        r = Browser().client.get("/api/stations")
+        self.assertIn("s-maxage", r.headers["cache-control"])
+
+    def test_connections_to_supabase_are_reused(self):
+        c = self.person("ann"); self.route(c, 2, 8)
+        c.get("/api/matches")                                        # warm-up opens the connections
+        fake.connections = 0
+        c.get("/api/matches"); c.get("/api/buddies"); c.get("/api/me")
+        self.assertEqual(fake.connections, 0)                        # a new https connection per call is what made it slow
+
+    def test_independent_lookups_run_together(self):
+        c = self.person("ann"); self.route(c, 2, 8)
+        backend._token_cache.clear(); fake.latency = 0.1
+        start = time.time(); r = c.get("/api/matches"); took = time.time() - start
+        fake.latency = 0
+        self.assertEqual(r.status_code, 200)
+        self.assertLess(took, 0.6)       # 7 lookups one after another would need >= 0.7 s; with 4 of them together it is ~0.4 s
 
     def test_logout_clears_login(self):
         c = self.person("ann")

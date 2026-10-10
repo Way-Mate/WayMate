@@ -69,7 +69,7 @@ messages. 3 different people reporting an account within 30 days suspends it (hi
 Review reports in Supabase **Table Editor → wm_reports**; reinstate someone by setting `wm_profiles.suspended = false`.
 
 ## 6. Tests
-`python -m unittest discover -s tests -v` — 18 tests run the real backend against a fake Supabase (`tests/mock_supabase.py`);
+`python -m unittest discover -s tests -v` — 22 tests run the real backend against a fake Supabase (`tests/mock_supabase.py`);
 no internet or account needed.
 
 ## 7. Deploy on Vercel + GoDaddy domain
@@ -86,6 +86,21 @@ Wait for Vercel to show *Valid Configuration* (minutes to a few hours); the http
 `https://yourdomain.com/**` and `https://www.yourdomain.com/**`. Before real users: turn **Confirm email ON** and set up your own
 SMTP (*Authentication → SMTP Settings*), otherwise the 2-emails/hour limit blocks sign-ups.
 **E. Update later** — `git push`; Vercel redeploys automatically.
+
+## Speed on Vercel (read if the site feels slow)
+Most of the delay is distance + number of round trips, not computing:
+* **Function region** — `vercel.json` sets `"regions": ["bom1"]` (Mumbai). It should be the SAME region as your Supabase project
+  (Supabase → Project Settings → General). If Supabase is in Singapore use `sin1`, in Frankfurt `fra1`, in the US east `iad1`.
+  A function in the US talking to a database in India pays the ocean crossing on EVERY database call.
+* `backend.py` reuses connections to Supabase (`SESSION`) and runs independent lookups together (`parallel(...)`).
+* The page asks the server for just two things at start-up (`/api/me`, `/api/stations`) and shows the landing page
+  immediately; the station list is cached at Vercel's edge.
+* The first request after the site has been idle can take 1–3 s (a "cold start") — normal for serverless on free plans.
+
+## How the site looks in Google
+Edit the title/description in `public/index.html` (`<title>`, `<meta name="description">`, the `og:` lines).
+Google updates its snippet only when it re-crawls: add the site in **Google Search Console**, then *URL Inspection → Request Indexing*.
+`public/robots.txt` and `public/sitemap.xml` are included; `/api/` is hidden from crawlers.
 
 ## Not included yet
 Rate limiting (left out on purpose for now), photos, ticket/trip booking, people search, an admin page for reports.

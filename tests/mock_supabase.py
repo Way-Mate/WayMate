@@ -1,6 +1,7 @@
 """A tiny FAKE Supabase (Auth + database API) so the tests run without internet or accounts."""
 import json
 import threading
+import time
 import uuid
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -53,6 +54,7 @@ class FakeSupabase:
         self.reset()
 
     def reset(self):
+        self.latency, self.calls, self.connections = 0.0, [], 0     # latency: seconds added to every answer (to imitate a far-away server)
         self.tables = {t: [] for t in TABLES}
         self.seq, self.users, self.tokens, self.refresh = {}, {}, {}, {}
         self.expired, self.emails, self.confirm_email, self.no_grants = set(), [], False, False
@@ -133,8 +135,12 @@ class FakeSupabase:
 
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, *a): pass
+            protocol_version = "HTTP/1.1"                          # keep-alive, like the real Supabase
+            disable_nagle_algorithm = True                         # send small replies immediately (avoids a fake 40 ms stall)
             def handle_any(self):
-                u = urlparse(self.path)
+                if fake.latency: time.sleep(fake.latency)
+                u = urlparse(self.path); fake.calls.append(f"{self.command} {u.path}")
+
                 params = parse_qsl(u.query, keep_blank_values=True)
                 raw = self.rfile.read(int(self.headers.get("Content-Length") or 0))
                 data = json.loads(raw) if raw else None
@@ -150,7 +156,10 @@ class FakeSupabase:
                 self.send_header("Content-Length", str(len(payload))); self.end_headers(); self.wfile.write(payload)
             do_GET = do_POST = do_PATCH = do_DELETE = handle_any
 
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        class CountingServer(ThreadingHTTPServer):
+            def get_request(self):                                # one tick per NEW TCP connection
+                conn, addr = super().get_request(); fake.connections += 1; return conn, addr
+        self.server = CountingServer(("127.0.0.1", 0), Handler)
         self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         return self

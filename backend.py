@@ -14,9 +14,11 @@ import os
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
 import requests
+from requests.adapters import HTTPAdapter
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -123,6 +125,19 @@ def first(rows):
 
 
 # ───────────────────────── 3. talking to Supabase ─────────────────────────
+SESSION = requests.Session()     # keeps connections to Supabase open and reuses them (a fresh https connection per call is slow)
+for _scheme in ("https://", "http://"):
+    SESSION.mount(_scheme, HTTPAdapter(pool_connections=4, pool_maxsize=16))
+_pool = ThreadPoolExecutor(max_workers=16)
+
+
+def parallel(*calls):
+    """Run independent lookups AT THE SAME TIME. Each call is (function, arg, arg...). Returns the results in order.
+    Waiting for 4 lookups one after another costs 4x the network delay; together they cost about 1x."""
+    futures = [_pool.submit(fn, *args) for fn, *args in calls]
+    return [f.result() for f in futures]
+
+
 def _error_text(r):
     try:
         d = r.json()
@@ -147,7 +162,7 @@ def rest(method, table, params=None, json_body=None, prefer=None):
     headers = key_headers(SERVICE_KEY)
     if prefer:
         headers["Prefer"] = prefer
-    r = requests.request(method, f"{SUPABASE_URL}/rest/v1/{table}", params=params, json=json_body, headers=headers, timeout=15)
+    r = SESSION.request(method, f"{SUPABASE_URL}/rest/v1/{table}", params=params, json=json_body, headers=headers, timeout=15)
     if r.status_code >= 400:
         raise ApiError(409 if r.status_code == 409 else 502, _error_text(r))
     return r.json() if r.content else None
@@ -156,7 +171,7 @@ def rest(method, table, params=None, json_body=None, prefer=None):
 def auth_call(path, payload=None, params=None, token=None, method="POST"):
     """Sign-in call (Supabase Auth / GoTrue)."""
     headers = key_headers(ANON_KEY, token)
-    r = requests.request(method, f"{SUPABASE_URL}/auth/v1/{path}", params=params, json=payload, headers=headers, timeout=15)
+    r = SESSION.request(method, f"{SUPABASE_URL}/auth/v1/{path}", params=params, json=payload, headers=headers, timeout=15)
     data = r.json() if r.content else {}
     if r.status_code >= 400:
         raise ApiError(400 if r.status_code < 500 else 502, _error_text(r), data.get("error_code") if isinstance(data, dict) else None)
@@ -164,7 +179,7 @@ def auth_call(path, payload=None, params=None, token=None, method="POST"):
 
 
 # ───────────────────────── 4. login session (cookies) ─────────────────────────
-ACCESS, REFRESH = "wm_access", "wm_refresh"
+ACCESS, REFRESH, HINT = "wm_access", "wm_refresh", "wm_hint"
 _token_cache = {}   # access token -> (user id, valid until). Saves asking Supabase on every request.
 
 
@@ -172,6 +187,7 @@ def set_session_cookies(response, session):
     flags = dict(httponly=True, samesite="lax", secure=COOKIE_SECURE)
     response.set_cookie(ACCESS, session["access_token"], max_age=int(session.get("expires_in", 3600)), **flags)
     response.set_cookie(REFRESH, session["refresh_token"], max_age=60 * 24 * 3600, **flags)
+    response.set_cookie(HINT, "1", max_age=60 * 24 * 3600, httponly=False, samesite="lax", secure=COOKIE_SECURE)   # just "has logged in here"
 
 
 def user_id_for(token):
@@ -259,8 +275,12 @@ def prefs_allow(my_pref, my_gender, their_pref, their_gender):
     return (my_pref == "any" or my_pref == gender_word(their_gender)) and (their_pref == "any" or their_pref == gender_word(my_gender))
 
 
+def fetch_profile(uid):
+    return first(rest("GET", "wm_profiles", {"id": f"eq.{uid}", "select": "*"}))
+
+
 def require_profile(uid):
-    profile = first(rest("GET", "wm_profiles", {"id": f"eq.{uid}", "select": "*"}))
+    profile = fetch_profile(uid)
     if not profile:
         bad("Set up your profile first")
     return profile
@@ -279,15 +299,6 @@ def is_blocked(a, b):
     return bool(rest("GET", "wm_blocks", {"or": f, "select": "blocker", "limit": "1"}))
 
 
-def hidden_user_ids(uid):
-    """People who must not appear as matches: blocked either way, or already connected / asked."""
-    rows = rest("GET", "wm_blocks", {"or": f"(blocker.eq.{uid},blocked.eq.{uid})", "select": "blocker,blocked"})
-    rows += rest("GET", "wm_connections", {"or": f"(requester.eq.{uid},recipient.eq.{uid})", "select": "requester,recipient"})
-    ids = {v for row in rows for v in row.values()}
-    ids.discard(uid)
-    return ids
-
-
 # ───────────────────────── 6. website + status ─────────────────────────
 @app.get("/api/status")
 def status(request: Request):
@@ -295,7 +306,7 @@ def status(request: Request):
     if not (SUPABASE_URL and ANON_KEY and SERVICE_KEY) or "YOUR" in SUPABASE_URL + ANON_KEY + SERVICE_KEY:
         return reply(ok=False, problem="config")
     try:
-        r = requests.get(f"{SUPABASE_URL}/rest/v1/wm_profiles", params={"select": "id", "limit": "1"}, timeout=10,
+        r = SESSION.get(f"{SUPABASE_URL}/rest/v1/wm_profiles", params={"select": "id", "limit": "1"}, timeout=10,
                          headers=key_headers(SERVICE_KEY))
     except requests.RequestException:
         return reply(ok=False, problem="network", host=SUPABASE_URL.split("//")[-1])
@@ -310,7 +321,7 @@ def status(request: Request):
 
 @app.get("/api/stations")
 def stations():
-    return reply(stations=STATIONS)
+    return JSONResponse({"stations": STATIONS}, headers={"Cache-Control": "public, max-age=3600, s-maxage=86400"})
 
 
 # ───────────────────────── 7. sign up / sign in ─────────────────────────
@@ -365,6 +376,7 @@ def logout(request: Request):
     response = JSONResponse({"ok": True})
     response.delete_cookie(ACCESS)
     response.delete_cookie(REFRESH)
+    response.delete_cookie(HINT)
     return response
 
 
@@ -440,10 +452,18 @@ def delete_route(uid: str = Depends(login_required)):
 def matches(uid: str = Depends(login_required)):
     """A sees B only if: same direction, leaving within 45 min, sharing at least half of the shorter trip,
     both gender preferences allow it, and neither has blocked / been suspended / already been asked."""
-    mine_profile = require_profile(uid)
-    mine = first(rest("GET", "wm_posts", {"user_id": f"eq.{uid}", "select": "*"}))
+    # four independent lookups, sent together: my profile, my route, people I blocked / who blocked me, my connections
+    profile_rows, route_rows, blocks, connections = parallel(
+        (rest, "GET", "wm_profiles", {"id": f"eq.{uid}", "select": "*"}),
+        (rest, "GET", "wm_posts", {"user_id": f"eq.{uid}", "select": "*"}),
+        (rest, "GET", "wm_blocks", {"or": f"(blocker.eq.{uid},blocked.eq.{uid})", "select": "blocker,blocked"}),
+        (rest, "GET", "wm_connections", {"or": f"(requester.eq.{uid},recipient.eq.{uid})", "select": "requester,recipient"}))
+    mine_profile, mine = first(profile_rows), first(route_rows)
+    if not mine_profile:
+        bad("Set up your profile first")
     if not mine:
         return reply(matches=[])
+    hidden = {v for row in blocks + connections for v in row.values()} - {uid}     # blocked either way, or already connected / asked
     my_time = parse_time(mine["departure_at"])
     lo, hi = my_time - timedelta(minutes=MATCH_WINDOW_MIN), my_time + timedelta(minutes=MATCH_WINDOW_MIN)
     # the database narrows it down (shares a station + leaves in the window); the rules below do the rest
@@ -455,7 +475,6 @@ def matches(uid: str = Depends(login_required)):
         return reply(matches=[])
     people = {p["id"]: p for p in rest("GET", "wm_profiles", {
         "id": "in.(" + ",".join(c["user_id"] for c in candidates) + ")", "select": "id,name,age,bio,gender,suspended"})}
-    hidden = hidden_user_ids(uid)
     found = []
     for c in candidates:
         other = people.get(c["user_id"])
@@ -494,16 +513,18 @@ def buddies(uid: str = Depends(login_required)):
 @app.post("/api/connections")
 def request_buddy(payload: dict = Depends(json_body), uid: str = Depends(login_required)):
     target = valid_id(payload.get("to"))
-    suspended = require_profile(uid)["suspended"]
     if target == uid:
         bad("You cannot add yourself")
-    if suspended:
+    me_row, target_row, blocked, existing = parallel(
+        (fetch_profile, uid), (fetch_profile, target), (is_blocked, uid, target), (get_pair, uid, target))
+    if not me_row:
+        bad("Set up your profile first")
+    if me_row["suspended"]:
         raise ApiError(403, "Your account is under review")
-    if not first(rest("GET", "wm_profiles", {"id": f"eq.{target}", "select": "id"})):
+    if not target_row:
         raise ApiError(404, "User not found")
-    if is_blocked(uid, target):
+    if blocked:
         raise ApiError(403, "You can't send a request to this person")
-    existing = get_pair(uid, target)
     if existing:
         if existing["status"] == "cancelled" and existing["requester"] == uid:       # re-send something I cancelled
             rest("PATCH", "wm_connections", {"id": f"eq.{existing['id']}"}, {"status": "pending"})
@@ -530,23 +551,25 @@ def respond(cid: int, payload: dict = Depends(json_body), uid: str = Depends(log
 
 
 # ───────────────────────── 12. chat ─────────────────────────
-def require_chat_allowed(uid, other):
-    c = get_pair(uid, other)
-    if not c or c["status"] != "accepted":
+def check_chat_rules(pair, blocked):
+    if not pair or pair["status"] != "accepted":
         raise ApiError(403, "Accept this connection before messaging")
-    if is_blocked(uid, other):
+    if blocked:
         raise ApiError(403, "You can't message this person")
 
 
 @app.get("/api/messages/{other}")
 def get_messages(other: str, after: Optional[int] = None, uid: str = Depends(login_required)):
     other = valid_id(other)
-    require_chat_allowed(uid, other)
     params = {"or": f"(and(sender.eq.{uid},recipient.eq.{other}),and(sender.eq.{other},recipient.eq.{uid}))",
               "select": "*", "order": "id.desc", "limit": "200"}
     if after:
         params["id"] = f"gt.{after}"
-    return reply(messages=rest("GET", "wm_messages", params)[::-1])      # oldest first
+    # The chat is polled every few seconds, so keep it to ONE round of lookups: fetch the messages at the same time as the
+    # permission checks, and only return them if the checks pass.
+    pair, blocked, rows = parallel((get_pair, uid, other), (is_blocked, uid, other), (rest, "GET", "wm_messages", params))
+    check_chat_rules(pair, blocked)
+    return reply(messages=rows[::-1])      # oldest first
 
 
 @app.post("/api/messages/{other}")
@@ -555,9 +578,12 @@ def send_message(other: str, payload: dict = Depends(json_body), uid: str = Depe
     msg = text(payload.get("body"), 2000)
     if not msg:
         bad("Message cannot be empty")
-    if require_profile(uid)["suspended"]:
+    pair, blocked, me_row = parallel((get_pair, uid, other), (is_blocked, uid, other), (fetch_profile, uid))
+    if not me_row:
+        bad("Set up your profile first")
+    if me_row["suspended"]:
         raise ApiError(403, "Your account is under review")
-    require_chat_allowed(uid, other)
+    check_chat_rules(pair, blocked)
     rows = rest("POST", "wm_messages", None, {"sender": uid, "recipient": other, "body": msg}, "return=representation")
     return reply(message=rows[0])
 
