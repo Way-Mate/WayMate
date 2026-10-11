@@ -112,6 +112,9 @@ class WaymateTests(unittest.TestCase):
         c = Browser()
         home = c.get("/")
         self.assertEqual(home.status_code, 200); self.assertIn("Waymate", home.text)
+        for needle in ('name="description"', 'rel="canonical"', 'og:image', 'sizes="48x48"', 'sizes="192x192"'):
+            self.assertIn(needle, home.text)                          # what Google and link previews read
+        self.assertNotIn("Discover", home.text)                       # tab labels are built by JS after sign-in, never in the raw page
         self.assertEqual(c.get("/js/app.js").status_code, 200); self.assertEqual(c.get("/css/styles.css").status_code, 200)
         self.assertEqual(c.get("/api/does-not-exist").status_code, 404)
 

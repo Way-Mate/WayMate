@@ -157,10 +157,17 @@ function renderSetupProblem(kind, host = "") {
     <button class="btn primary block" data-do="reload">Try again</button></div>`);
 }
 
+/* The tab bar is built here (not written in index.html) so its labels never show up in Google's snippet of the page. */
+function buildTabs() {
+  const tab = (name, icon, label) => `<button data-tab="${name}" data-do="go" data-screen="${name}"><span>${icon}</span>${label}</button>`;
+  $("#tabbar").innerHTML = tab("discover", "💞", "Discover") + tab("buddies", "🫂", "Buddies") + tab("profile", "👤", "Profile");
+}
+
 /* After sign-in: show the profile form (first time) or the app. */
 function startApp(profile) {
   me = profile;
   if (!me) { $("#tabbar").classList.add("hidden"); return renderProfileForm(); }
+  buildTabs();
   $("#tabbar").classList.remove("hidden");
   setInterval(checkRequests, 30000);         // announce new buddy requests
   go("discover");
