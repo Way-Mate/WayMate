@@ -58,7 +58,7 @@ document.addEventListener("click", e => {
 function renderLanding() {
   $("#tabbar").classList.add("hidden");
   show(`<div class="landing">
-    <div class="hero"><h1>Date on your daily metro ride 🚇</h1>
+    <div class="hero"><h1>Date on your daily metro ride</h1>
       <p>Waymate introduces you to people who travel the <b>same way</b>, on the <b>same stretch</b> of the Delhi Metro Blue Line, at the <b>same time</b> as you.</p>
       <div class="hero-cta"><button class="btn primary" data-do="auth" data-intent="signup">Get started</button>
         <button class="btn ghost" data-do="auth" data-intent="signin">I already have an account</button></div></div>

@@ -1,0 +1,75 @@
+/* ============ Waymate theme — clean white, maroon accent, serif headings (Zinara-style) ============
+   Loaded LAST, so it overrides the older purple/pink look. To go back to the old look, remove its <link> from index.html. */
+
+:root {
+  --maroon: #7a1f4d;
+  --maroon-dark: #5c1539;
+  --bg: #ffffff;           /* pure white everywhere */
+  --card: #ffffff;
+  --text: #1c1b1f;
+  --muted: #6b6a72;
+  --line: #ebe4e8;
+  --navy: #3b1029;         /* headings */
+  --navy2: var(--maroon);
+  --blue: var(--maroon);   /* accent colour used by the older rules */
+  --cyan: #b35a86;
+  --serif: Georgia, "Libre Baskerville", "Times New Roman", serif;
+}
+
+html, body, .app, #content, .screen, .tabbar { background: #ffffff; }
+body { color: var(--text); }
+.app { width: 100%; max-width: none; box-shadow: none; border-radius: 0; }   /* full width on phones too (was a 420px column with side gaps) */
+
+/* ---------- header: white bar with the logo ---------- */
+.appbar { background: #ffffff; color: var(--text); padding: 10px 16px; border-bottom: 1px solid var(--line); box-shadow: none; }
+@media (min-width: 768px) { .appbar { padding: 12px var(--gutter); } }   /* logo lines up with the page content */
+
+/* ---------- headings in a serif, like the Zinara site ---------- */
+.page-title, h2, h3, .hero h1 { font-family: var(--serif); font-weight: 600; letter-spacing: .01em; color: var(--navy); }
+.page-title { font-size: 22px; }
+
+/* ---------- cards: white with a thin border (no tinted shadows) ---------- */
+.card { background: #ffffff; border: 1px solid var(--line); box-shadow: none; border-radius: 14px; }
+.card > div + div, .card > b + div { margin-top: 6px; }          /* breathing room between the lines of a card */
+.card > button + div, .card > .btn + div { margin-top: 12px; }
+/* "Report · Block" row: the old style made each a full-width centred block */
+.link-danger { display: inline; margin: 0; padding: 0; font-size: 12.5px; color: #b42318; background: none; border: none; text-decoration: underline; }
+.empty { border: 1px dashed var(--line); background: #ffffff; }
+
+/* ---------- buttons ---------- */
+.btn { border-radius: 10px; font-weight: 600; }
+.btn.primary { background: var(--maroon); color: #fff; box-shadow: none; text-transform: uppercase; letter-spacing: .06em; font-size: 13.5px; }
+.btn.primary:hover { background: var(--maroon-dark); }
+.btn.small-btn.primary { font-size: 12px; letter-spacing: .05em; }
+.btn.ghost { background: #ffffff; border: 1.5px solid var(--maroon); color: var(--maroon); }
+.btn.ghost:hover { background: #fbf3f7; }
+.btn.danger { background: #ffffff; border: 1.5px solid #e8c9c9; color: #b42318; }
+
+/* ---------- forms ---------- */
+.input { border: 1px solid #ddd2d8; border-radius: 10px; background: #ffffff; }
+.input:focus { border-color: var(--maroon); box-shadow: 0 0 0 3px rgba(122, 31, 77, .12); outline: none; }
+.field > span, .field-label { color: var(--muted); }
+
+/* ---------- small things ---------- */
+.badge { background: #f1eef0; color: var(--muted); }
+.badge.ok { background: #f6e8ef; color: var(--maroon); }
+.step-n { background: #f6e8ef; color: var(--maroon); }
+.toast { background: #2b1020; }
+
+/* ---------- tab bar ---------- */
+.tabbar { border-top: 1px solid var(--line); box-shadow: none; }
+.tabbar button { color: var(--muted); }
+.tabbar button.active { color: var(--maroon); background: transparent; }
+@media (min-width: 768px) {
+  .tabbar { border-top: 0; border-bottom: 1px solid var(--line); }
+  .tabbar button { border-radius: 0; font-weight: 600; }
+  .tabbar button.active { background: transparent; box-shadow: inset 0 -2px 0 var(--maroon); }
+}
+
+/* ---------- landing page: light hero instead of the dark purple block ---------- */
+.hero { background: #ffffff; color: var(--text); border: 0; border-radius: 0; padding: 26px 8px 18px; text-align: center; }
+.hero h1 { color: var(--maroon); margin-left: auto; margin-right: auto; }
+.hero h1::after { content: ""; display: block; width: 120px; height: 1px; background: var(--maroon); margin: 16px auto 0; }
+.hero p { color: #4c4a52; margin: 16px auto 0; }
+.hero-cta { justify-content: center; }
+.hero .btn.ghost { background: #ffffff; color: var(--maroon); border: 1.5px solid var(--maroon); }
